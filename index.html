@@ -2,326 +2,572 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <title>Игры разума</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<style>
-  :root {
-    /* цвета берутся из темы Telegram, с запасными значениями */
-    --bg: var(--tg-theme-bg-color, #17212b);
-    --text: var(--tg-theme-text-color, #f5f5f5);
-    --hint: var(--tg-theme-hint-color, #8a9aa9);
-    --card: var(--tg-theme-secondary-bg-color, #232e3c);
-    --accent: var(--tg-theme-button-color, #4f9cf9);
-    --accent-text: var(--tg-theme-button-text-color, #ffffff);
-    --mine: #f9c74f;
-  }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body {
-    margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-    background: var(--bg); color: var(--text); font-size: 15px;
-  }
-  .topbar {
-    display: flex; align-items: baseline; justify-content: space-between;
-    padding: 14px 16px 8px;
-  }
-  .title { font-weight: 700; font-size: 18px; }
-  .season { color: var(--hint); font-size: 13px; }
-  .tabs { display: flex; gap: 6px; padding: 0 12px 8px; overflow-x: auto; }
-  .tab {
-    flex: 0 0 auto; border: none; background: var(--card); color: var(--text);
-    padding: 8px 14px; border-radius: 18px; font-size: 14px; cursor: pointer;
-  }
-  .tab.active { background: var(--accent); color: var(--accent-text); font-weight: 600; }
-  main { padding: 8px 12px 32px; }
-  .loader, .empty { color: var(--hint); text-align: center; padding: 32px 0; }
+  <style>
+    /* ============ Палитра: премиум A+C, индиго-акцент ============ */
+    :root {
+      --accent: #7c6cff;
+      --accent-soft: rgba(124, 108, 255, 0.14);
+      --accent-border: rgba(124, 108, 255, 0.55);
+      --gold: #f5c542;
+      --gold-soft: rgba(245, 197, 66, 0.14);
+      --silver: #c8cede;
+      --bronze: #e8a06a;
+      --radius: 16px;
+    }
+    html[data-theme="dark"] {
+      --bg: #0e1119;
+      --bg-elev: rgba(23, 27, 40, 0.85);
+      --card: #171b28;
+      --card-2: #1e2334;
+      --text: #eef0f8;
+      --muted: #8b90a5;
+      --line: rgba(255, 255, 255, 0.07);
+      --skeleton: rgba(255, 255, 255, 0.06);
+      --skeleton-shine: rgba(255, 255, 255, 0.12);
+    }
+    html[data-theme="light"] {
+      --bg: #f1f2f7;
+      --bg-elev: rgba(255, 255, 255, 0.85);
+      --card: #ffffff;
+      --card-2: #f6f6fb;
+      --text: #191c2b;
+      --muted: #7a7f95;
+      --line: rgba(20, 22, 40, 0.08);
+      --skeleton: rgba(20, 22, 40, 0.06);
+      --skeleton-shine: rgba(20, 22, 40, 0.12);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: -apple-system, "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif;
+      background: var(--bg); color: var(--text); font-size: 15px;
+      padding-bottom: calc(64px + env(safe-area-inset-bottom));
+      transition: background .25s ease, color .25s ease;
+    }
 
-  /* сегмент-контрол выбора формата (Синхрон | Матрица | Все) */
-  .segment {
-    display: flex; gap: 4px; background: var(--card); border-radius: 12px;
-    padding: 4px; margin-bottom: 10px;
-  }
-  .seg {
-    flex: 1; border: none; background: transparent; color: var(--text);
-    padding: 8px 6px; border-radius: 9px; font-size: 14px; cursor: pointer;
-  }
-  .seg.active { background: var(--accent); color: var(--accent-text); font-weight: 600; }
-  .list { min-height: 40px; }
+    /* ============ Шапка ============ */
+    .topbar {
+      position: sticky; top: 0; z-index: 20;
+      display: flex; align-items: baseline; justify-content: space-between;
+      padding: 14px 16px 10px;
+      background: var(--bg-elev);
+      -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--line);
+    }
+    .title { font-weight: 700; font-size: 17px; letter-spacing: .2px; }
+    .title .dot { color: var(--accent); }
+    .season { color: var(--muted); font-size: 12px; }
+    main { padding: 12px 14px 24px; max-width: 560px; margin: 0 auto; }
 
-  .row {
-    display: flex; align-items: center; gap: 10px;
-    background: var(--card); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px;
-  }
-  .row.mine { outline: 2px solid var(--mine); }
-  .place { width: 30px; text-align: center; font-weight: 700; }
-  .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pts { font-weight: 700; }
-  .sub { color: var(--hint); font-size: 12px; }
+    /* ============ Сегмент-контрол ============ */
+    .segment {
+      display: flex; gap: 4px; background: var(--card); border-radius: 12px;
+      padding: 4px; margin-bottom: 12px; border: 1px solid var(--line);
+    }
+    .seg {
+      flex: 1; border: none; background: transparent; color: var(--muted);
+      padding: 8px 6px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: background .2s ease, color .2s ease;
+    }
+    .seg.active { background: var(--accent); color: #fff; }
 
-  .banner {
-    background: var(--card); border-radius: 12px; padding: 10px 12px;
-    margin-bottom: 10px; color: var(--mine); font-weight: 600; text-align: center;
-  }
+    /* ============ Подиум топ-3 ============ */
+    .podium { display: flex; align-items: flex-end; gap: 8px; margin: 6px 2px 14px; }
+    .pod { flex: 1; text-align: center; animation: rise .45s ease both; }
+    .pod .ava {
+      width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 16px; color: var(--muted);
+      background: var(--card-2); border: 2px solid var(--line);
+    }
+    .pod .nm { font-size: 11px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
+    .pod .pts { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .pod .base {
+      margin-top: 6px; border-radius: 10px 10px 0 0; background: var(--card);
+      border: 1px solid var(--line); border-bottom: none;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 18px; color: var(--muted);
+    }
+    .pod.p1 .base { height: 64px; color: var(--gold); background: var(--gold-soft); border-color: rgba(245,197,66,.4); }
+    .pod.p1 .ava { border-color: var(--gold); background: var(--gold-soft); color: var(--gold); box-shadow: 0 0 18px rgba(245,197,66,.35); }
+    .pod.p2 .base { height: 46px; color: var(--silver); }
+    .pod.p2 .ava { border-color: var(--silver); color: var(--silver); }
+    .pod.p3 .base { height: 34px; color: var(--bronze); }
+    .pod.p3 .ava { border-color: var(--bronze); color: var(--bronze); }
+    .pod.mine .nm { color: var(--accent); }
+    @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 
-  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
-  .metric { background: var(--card); border-radius: 12px; padding: 12px; }
-  .metric .v { font-size: 22px; font-weight: 700; }
-  .metric .k { color: var(--hint); font-size: 12px; margin-top: 2px; }
+    /* ============ Строки рейтинга ============ */
+    .banner {
+      background: var(--accent-soft); border: 1px solid var(--accent-border);
+      border-radius: var(--radius); padding: 10px 14px; margin-bottom: 10px;
+      font-size: 13px; font-weight: 600; text-align: center; color: var(--accent);
+      animation: fadeUp .4s ease both;
+    }
+    .row {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: var(--radius); padding: 11px 14px; margin-bottom: 8px;
+      animation: fadeUp .35s ease both;
+    }
+    .row.mine {
+      border-color: var(--accent-border); background: var(--accent-soft);
+      box-shadow: 0 0 16px rgba(124, 108, 255, .18);
+    }
+    .row .place { min-width: 28px; text-align: center; font-weight: 800; font-size: 14px; color: var(--muted); }
+    .row.g1 .place { color: var(--gold); }
+    .row.g2 .place { color: var(--silver); }
+    .row.g3 .place { color: var(--bronze); }
+    .row .name { flex: 1; font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .row .you {
+      font-size: 10px; font-weight: 700; color: #fff; background: var(--accent);
+      border-radius: 8px; padding: 2px 7px; margin-left: 6px; vertical-align: 1px;
+    }
+    .row .pts { font-weight: 800; font-size: 15px; }
+    .row .sub { color: var(--muted); font-size: 11px; font-weight: 500; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
-  .spark { display: flex; align-items: flex-end; gap: 3px; height: 48px; margin: 6px 0 14px; }
-  .spark i { display: block; flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; min-height: 3px; }
+    /* ============ Скелетоны ============ */
+    .sk {
+      height: 46px; border-radius: var(--radius); margin-bottom: 8px;
+      background: linear-gradient(100deg, var(--skeleton) 40%, var(--skeleton-shine) 50%, var(--skeleton) 60%);
+      background-size: 200% 100%; animation: shine 1.2s linear infinite;
+    }
+    @keyframes shine { to { background-position: -200% 0; } }
+    .empty { color: var(--muted); text-align: center; padding: 36px 12px; font-size: 14px; line-height: 1.5; }
 
-  .badges { display: flex; flex-wrap: wrap; gap: 8px; }
-  .badge { background: var(--card); border-radius: 20px; padding: 8px 14px; font-weight: 600; }
+    /* ============ Профиль ============ */
+    .phead { display: flex; align-items: center; gap: 14px; margin: 4px 2px 14px; animation: fadeUp .35s ease both; }
+    .phead .ava {
+      width: 56px; height: 56px; border-radius: 50%; flex: 0 0 auto;
+      background: var(--accent-soft); border: 2px solid var(--accent-border);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 22px; color: var(--accent);
+    }
+    .phead .nm { font-size: 18px; font-weight: 700; }
+    .phead .sb { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+    .metric {
+      background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+      padding: 12px 8px; text-align: center; animation: fadeUp .35s ease both;
+    }
+    .metric .v { font-size: 20px; font-weight: 800; }
+    .metric.gold .v { color: var(--gold); }
+    .metric .k { color: var(--muted); font-size: 10px; margin-top: 3px; font-weight: 600; letter-spacing: .3px; }
+    .card {
+      background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 14px; margin-bottom: 12px; animation: fadeUp .35s ease both;
+    }
+    .card h4 { margin: 0 0 10px; font-size: 12px; color: var(--muted); font-weight: 700; letter-spacing: .4px; text-transform: uppercase; }
+    .spark-svg { width: 100%; height: 64px; display: block; }
+    .badges { display: flex; flex-wrap: wrap; gap: 8px; }
+    .badge {
+      background: var(--gold-soft); border: 1px solid rgba(245, 197, 66, .4);
+      color: var(--gold); border-radius: 20px; padding: 8px 14px;
+      font-weight: 700; font-size: 13px; animation: fadeUp .35s ease both;
+    }
+    .bindhint { line-height: 1.6; color: var(--muted); font-size: 14px; }
+    .bindhint code { background: var(--accent-soft); color: var(--accent); padding: 2px 7px; border-radius: 6px; font-size: 13px; }
 
-  .bindhint { background: var(--card); border-radius: 12px; padding: 16px; color: var(--hint); line-height: 1.5; }
-  code { background: rgba(255,255,255,.08); padding: 1px 5px; border-radius: 4px; }
-</style>
+    /* ============ Нижняя навигация ============ */
+    .tabbar {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+      display: flex; justify-content: space-around;
+      background: var(--bg-elev);
+      -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+      border-top: 1px solid var(--line);
+      padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    }
+    .tab {
+      flex: 1; max-width: 110px; border: none; background: transparent; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      color: var(--muted); padding: 6px 4px; border-radius: 12px;
+      transition: color .2s ease, background .2s ease;
+    }
+    .tab svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .tab span { font-size: 10px; font-weight: 600; }
+    .tab.active { color: var(--accent); background: var(--accent-soft); }
+
+    #confetti { position: fixed; inset: 0; pointer-events: none; z-index: 100; }
+  </style>
 </head>
 <body>
   <header class="topbar">
-    <div class="title">🧠 Игры разума</div>
+    <div class="title">🧠 Игры разума<span class="dot">.</span></div>
     <div id="season" class="season"></div>
   </header>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="scoreboard">Табло</button>
-    <button class="tab" data-tab="season">Сезон</button>
-    <button class="tab" data-tab="profile">Профиль</button>
-    <button class="tab" data-tab="achievements">Ачивки</button>
+  <main id="content"></main>
+
+  <nav class="tabbar">
+    <button class="tab active" data-tab="scoreboard">
+      <svg viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3"/></svg>
+      <span>Табло</span>
+    </button>
+    <button class="tab" data-tab="season">
+      <svg viewBox="0 0 24 24"><path d="M4 19V10M10 19V5M16 19v-6M20 19H4"/></svg>
+      <span>Сезон</span>
+    </button>
+    <button class="tab" data-tab="profile">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/></svg>
+      <span>Профиль</span>
+    </button>
+    <button class="tab" data-tab="achievements">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="5"/><path d="M9 13.5 7 21l5-2.5L17 21l-2-7.5"/></svg>
+      <span>Ачивки</span>
+    </button>
   </nav>
 
-  <main id="content">
-    <div class="loader">Загрузка…</div>
-  </main>
+  <canvas id="confetti"></canvas>
 
   <!-- ЕДИНСТВЕННАЯ НАСТРОЙКА: вставьте сюда URL вашего Web App (Apps Script, вида
        https://script.google.com/macros/s/…/exec) вместо текста-заглушки. -->
   <script>
     window.API_BASE = 'https://script.google.com/macros/s/AKfycbwszeeKDoDhoZCcDl6K3r8-2PRWosbdFP7tQsGTYna7Vd_-dzw1fo-GSM1SEAnpH7al/exec';
   </script>
-<script>
-(function () {
-  var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-  var initData = tg ? tg.initData : '';
-  if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
 
-  var content = document.getElementById('content');
-  var seasonEl = document.getElementById('season');
-  var refreshTimer = null;
+  <script>
+  (function () {
+    var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+    var initData = tg ? tg.initData : '';
+    if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
 
-  // Форматы турниров — единый источник имён (совпадает с SHEETS.gameSheets на бэкенде).
-  var FORMATS = ['Синхрон', 'Матрица'];
-  // Текущий выбранный формат для табло/профиля; для сезона добавляется «Все».
-  var boardFormat = FORMATS[0];
-  var seasonFormat = 'all';      // 'all' | 'Синхрон' | 'Матрица'
-  var profileFormat = 'all';     // 'all' | 'Синхрон' | 'Матрица'
+    /* ---------- Тема: тёмный премиум + светлая версия по теме Telegram ---------- */
+    function applyTheme() {
+      var scheme = tg && tg.colorScheme ? tg.colorScheme
+        : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', scheme === 'light' ? 'light' : 'dark');
+      // Красим шапку/фон Telegram под приложение (поддерживается с версии 6.1)
+      if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast('6.1')) {
+        try {
+          tg.setHeaderColor(scheme === 'light' ? '#f1f2f7' : '#0e1119');
+          tg.setBackgroundColor(scheme === 'light' ? '#f1f2f7' : '#0e1119');
+        } catch (e) {}
+      }
+    }
+    applyTheme();
+    if (tg) { try { tg.onEvent('themeChanged', applyTheme); } catch (e) {} }
 
-  // Название своей команды: из URL (?team=) — fallback, если бот не привязан.
-  var urlTeam = new URLSearchParams(location.search).get('team') || '';
+    /* ---------- Хаптика ---------- */
+    function buzz(style) {
+      try { tg.HapticFeedback.impactOccurred(style || 'light'); } catch (e) {}
+    }
 
-  function api(action, params) {
-    var url = window.API_BASE + '?action=' + encodeURIComponent(action);
-    if (initData) url += '&initData=' + encodeURIComponent(initData);
-    if (!initData && urlTeam) url += '&team=' + encodeURIComponent(urlTeam);
-    if (params) {
-      Object.keys(params).forEach(function (k) {
-        if (params[k] != null && params[k] !== '') url += '&' + k + '=' + encodeURIComponent(params[k]);
+    var content = document.getElementById('content');
+    var seasonEl = document.getElementById('season');
+    var refreshTimer = null;
+
+    var FORMATS = ['Синхрон', 'Матрица'];
+    var boardFormat = FORMATS[0];
+    var seasonFormat = 'all';
+    var profileFormat = 'all';
+    var urlTeam = new URLSearchParams(location.search).get('team') || '';
+    var myName = null;
+
+    function api(action, params) {
+      var url = window.API_BASE + '?action=' + encodeURIComponent(action);
+      if (initData) url += '&initData=' + encodeURIComponent(initData);
+      if (!initData && urlTeam) url += '&team=' + encodeURIComponent(urlTeam);
+      if (params) {
+        Object.keys(params).forEach(function (k) {
+          if (params[k] != null && params[k] !== '') url += '&' + k + '=' + encodeURIComponent(params[k]);
+        });
+      }
+      return fetch(url).then(function (r) { return r.json(); });
+    }
+
+    function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+    function initials(name) { return esc(String(name).trim().charAt(0).toUpperCase() || '?'); }
+    function skeleton(n) {
+      var h = '';
+      for (var i = 0; i < n; i++) h += '<div class="sk" style="animation-delay:' + (i * 60) + 'ms"></div>';
+      return h;
+    }
+    function empty(msg) { return '<div class="empty">' + msg + '</div>'; }
+    function stagger(el) {
+      Array.prototype.forEach.call(el.querySelectorAll('.row, .metric, .badge'), function (node, i) {
+        node.style.animationDelay = (i * 35) + 'ms';
       });
     }
-    return fetch(url).then(function (r) { return r.json(); });
-  }
 
-  function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]; }); }
-  function setBusy() { content.innerHTML = '<div class="loader">Загрузка…</div>'; }
-  function empty(msg) { return '<div class="empty">' + esc(msg) + '</div>'; }
+    function segment(options, active, onPick) {
+      var wrap = document.createElement('div');
+      wrap.className = 'segment';
+      options.forEach(function (o) {
+        var b = document.createElement('button');
+        b.className = 'seg' + (o.v === active ? ' active' : '');
+        b.textContent = o.t;
+        b.addEventListener('click', function () { buzz('light'); onPick(o.v); });
+        wrap.appendChild(b);
+      });
+      return wrap;
+    }
 
-  var myName = null; // определится из профиля
-  function medal(place) { return place === 1 ? '🥇' : place === 2 ? '🥈' : place === 3 ? '🥉' : place; }
+    /* ---------- Конфетти (когда своя команда на 1 месте) ---------- */
+    function confetti() {
+      var cv = document.getElementById('confetti');
+      var ctx = cv.getContext('2d');
+      cv.width = innerWidth; cv.height = innerHeight;
+      var colors = ['#f5c542', '#7c6cff', '#5ecf8b', '#ff7a9c', '#6fc3ff'];
+      var parts = [];
+      for (var i = 0; i < 90; i++) {
+        parts.push({
+          x: Math.random() * cv.width, y: -20 - Math.random() * cv.height * 0.4,
+          vy: 2 + Math.random() * 3, vx: -1.5 + Math.random() * 3,
+          s: 4 + Math.random() * 5, r: Math.random() * Math.PI,
+          c: colors[i % colors.length],
+        });
+      }
+      var t0 = Date.now();
+      (function frame() {
+        ctx.clearRect(0, 0, cv.width, cv.height);
+        parts.forEach(function (p) {
+          p.x += p.vx; p.y += p.vy; p.r += 0.08;
+          ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r);
+          ctx.fillStyle = p.c; ctx.fillRect(-p.s / 2, -p.s / 2, p.s, p.s * 0.6);
+          ctx.restore();
+        });
+        if (Date.now() - t0 < 2200) requestAnimationFrame(frame);
+        else ctx.clearRect(0, 0, cv.width, cv.height);
+      })();
+      try { tg.HapticFeedback.notificationOccurred('success'); } catch (e) {}
+    }
 
-  /**
-   * Сегмент-контрол выбора формата.
-   * options — массив [{v:'Синхрон',t:'Синхрон'}, ...]; active — текущее значение;
-   * onPick(value) — колбэк. Возвращает DOM-узел.
-   */
-  function segment(options, active, onPick) {
-    var wrap = document.createElement('div');
-    wrap.className = 'segment';
-    options.forEach(function (o) {
-      var b = document.createElement('button');
-      b.className = 'seg' + (o.v === active ? ' active' : '');
-      b.textContent = o.t;
-      b.addEventListener('click', function () { onPick(o.v); });
-      wrap.appendChild(b);
+    /* ---------- Табло ---------- */
+    function renderScoreboard(silent) {
+      if (!silent) {
+        content.innerHTML = '';
+        content.appendChild(segment(
+          FORMATS.map(function (f) { return { v: f, t: f }; }),
+          boardFormat,
+          function (v) { boardFormat = v; renderScoreboard(); }
+        ));
+        var list = document.createElement('div');
+        list.id = 'boardlist';
+        list.innerHTML = skeleton(6);
+        content.appendChild(list);
+      }
+      api('scoreboard', { format: boardFormat }).then(function (d) {
+        var list = document.getElementById('boardlist');
+        if (!list) return;
+        if (!d.rows || !d.rows.length) {
+          list.innerHTML = empty('Пока нет результатов текущей игры<br>(' + esc(boardFormat) + ')');
+          return;
+        }
+        var mine = null;
+        d.rows.forEach(function (r) { if (myName && r.name === myName) mine = r; });
+
+        var html = '';
+        // Подиум: первые три строки списка
+        var podium = d.rows.slice(0, 3);
+        if (podium.length >= 2) {
+          var order = podium.length === 3 ? [1, 0, 2] : [0, 1]; // 2-е слева, 1-е в центре, 3-е справа
+          html += '<div class="podium">';
+          order.forEach(function (idx, k) {
+            var r = podium[idx];
+            if (!r) return;
+            html += '<div class="pod p' + Math.min(r.place, 3) + (r.name === myName ? ' mine' : '') + '" style="animation-delay:' + (k * 90) + 'ms">' +
+              '<div class="ava">' + initials(r.name) + '</div>' +
+              '<div class="nm">' + esc(r.name) + '</div>' +
+              '<div class="pts">' + r.points + '</div>' +
+              '<div class="base">' + r.place + '</div></div>';
+          });
+          html += '</div>';
+        }
+        if (mine) {
+          var gap;
+          if (mine.place > 1) {
+            var above = null;
+            for (var i = 0; i < d.rows.length; i++) {
+              if (d.rows[i].place < mine.place) above = d.rows[i];
+            }
+            gap = above ? 'До ' + above.place + '-го места: ' + (above.points - mine.points) + ' 🔺' : '';
+          } else {
+            gap = 'Вы лидируете! 🏆';
+          }
+          html += '<div class="banner">«' + esc(mine.name) + '» — ' + mine.place + ' место. ' + esc(gap) + '</div>';
+        }
+        d.rows.forEach(function (r) {
+          html += '<div class="row' + (r.name === myName ? ' mine' : '') + ' g' + Math.min(r.place, 4) + '">' +
+            '<div class="place">' + r.place + '</div>' +
+            '<div class="name">' + esc(r.name) + (r.name === myName ? '<span class="you">ВЫ</span>' : '') + '</div>' +
+            '<div class="pts">' + r.points + '</div></div>';
+        });
+        list.innerHTML = html;
+        stagger(list);
+
+        // Конфетти один раз за сессию на формат, если мы первые
+        if (mine && mine.place === 1) {
+          var key = 'confetti_' + boardFormat;
+          try {
+            if (!sessionStorage.getItem(key)) { sessionStorage.setItem(key, '1'); confetti(); }
+          } catch (e) {}
+        }
+      }).catch(function () {
+        var list = document.getElementById('boardlist');
+        if (list) list.innerHTML = empty('Не удалось загрузить табло.<br>Проверьте связь и попробуйте ещё раз.');
+      });
+    }
+
+    /* ---------- Сезон ---------- */
+    function renderSeason() {
+      content.innerHTML = '';
+      content.appendChild(segment(
+        [{ v: 'all', t: 'Все' }].concat(FORMATS.map(function (f) { return { v: f, t: f }; })),
+        seasonFormat,
+        function (v) { seasonFormat = v; renderSeason(); }
+      ));
+      var list = document.createElement('div');
+      list.innerHTML = skeleton(7);
+      content.appendChild(list);
+
+      var params = seasonFormat === 'all' ? {} : { format: seasonFormat };
+      api('season', params).then(function (d) {
+        seasonEl.textContent = d.season ? d.season : '';
+        if (!d.rows || !d.rows.length) { list.innerHTML = empty('Нет данных за сезон.'); return; }
+        var html = '';
+        d.rows.forEach(function (r) {
+          html += '<div class="row' + (r.name === myName ? ' mine' : '') + ' g' + Math.min(r.rank, 4) + '">' +
+            '<div class="place">' + r.rank + '</div>' +
+            '<div class="name">' + esc(r.name) + (r.name === myName ? '<span class="you">ВЫ</span>' : '') +
+            '<div class="sub">' + r.games + ' игр</div></div>' +
+            '<div class="pts">' + r.points + '</div></div>';
+        });
+        list.innerHTML = html;
+        stagger(list);
+      }).catch(function () { list.innerHTML = empty('Не удалось загрузить рейтинг.'); });
+    }
+
+    /* ---------- Профиль ---------- */
+    var profileData = null;
+
+    function renderProfile() {
+      content.innerHTML = skeleton(5);
+      api('profile').then(function (d) {
+        if (d.error || !d.name) {
+          content.innerHTML = '<div class="card bindhint">Чтобы видеть профиль своей команды, привяжите её в боте:<br><br>' +
+            'отправьте боту <code>/start Название команды</code><br><br>' +
+            'Например: <code>/start Вжух</code></div>';
+          return;
+        }
+        myName = d.name;
+        profileData = d;
+        drawProfile();
+      }).catch(function () { content.innerHTML = empty('Не удалось загрузить профиль.'); });
+    }
+
+    function drawProfile() {
+      var d = profileData;
+      var s = (profileFormat === 'all') ? (d.stats || {})
+        : ((d.statsByFormat && d.statsByFormat[profileFormat]) || {});
+
+      content.innerHTML = '';
+      var head = document.createElement('div');
+      head.className = 'phead';
+      head.innerHTML = '<div class="ava">' + initials(d.name) + '</div>' +
+        '<div><div class="nm">' + esc(d.name) + '</div>' +
+        '<div class="sb">' + (s.games || 0) + ' игр · средний балл ' + (s.avg || 0) + '</div></div>';
+      content.appendChild(head);
+
+      content.appendChild(segment(
+        [{ v: 'all', t: 'Все' }].concat(FORMATS.map(function (f) { return { v: f, t: f }; })),
+        profileFormat,
+        function (v) { profileFormat = v; drawProfile(); }
+      ));
+
+      var body = document.createElement('div');
+      var html = '<div class="metrics">' +
+        metric(s.seasonPlace || '—', 'МЕСТО В СЕЗОНЕ', s.seasonPlace === 1) +
+        metric(s.wins || 0, 'ПОБЕД', false) +
+        metric(s.best || '—', 'ЛУЧШЕЕ МЕСТО', s.best === 1) +
+        metric(s.points || 0, 'ОЧКИ СЕЗОНА', false) +
+        metric(s.games || 0, 'ИГР', false) +
+        metric(s.avg || 0, 'СРЕДНИЙ', false) +
+        '</div>';
+
+      var hist = (d.history || []).filter(function (h) { return profileFormat === 'all' || h.format === profileFormat; });
+      if (hist.length > 1) {
+        html += '<div class="card"><h4>Динамика очков</h4>' + sparkline(hist) + '</div>';
+      }
+      if (d.badges && d.badges.length) {
+        html += '<div class="card"><h4>Ачивки</h4><div class="badges">' +
+          d.badges.map(function (b) { return '<div class="badge">🏅 ' + esc(b.title) + '</div>'; }).join('') +
+          '</div></div>';
+      }
+      body.innerHTML = html;
+      content.appendChild(body);
+      stagger(content);
+    }
+
+    function metric(v, k, gold) {
+      return '<div class="metric' + (gold ? ' gold' : '') + '"><div class="v">' + esc(v) + '</div><div class="k">' + esc(k) + '</div></div>';
+    }
+
+    /* SVG-спарклайн: линия с точками, последняя точка — золотая */
+    function sparkline(hist) {
+      var w = 300, h = 60, pad = 6;
+      var pts = hist.map(function (x) { return x.points; });
+      var max = Math.max.apply(null, pts) || 1;
+      var min = Math.min.apply(null, pts);
+      var span = (max - min) || 1;
+      var step = (w - pad * 2) / Math.max(pts.length - 1, 1);
+      var coords = pts.map(function (p, i) {
+        return [pad + i * step, h - pad - ((p - min) / span) * (h - pad * 2)];
+      });
+      var line = coords.map(function (c, i) { return (i ? 'L' : 'M') + c[0].toFixed(1) + ' ' + c[1].toFixed(1); }).join(' ');
+      var dots = coords.map(function (c, i) {
+        var last = i === coords.length - 1;
+        return '<circle cx="' + c[0].toFixed(1) + '" cy="' + c[1].toFixed(1) + '" r="' + (last ? 4 : 2.5) + '" fill="' + (last ? 'var(--gold)' : 'var(--accent)') + '"/>';
+      }).join('');
+      return '<svg class="spark-svg" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none">' +
+        '<path d="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+        dots + '</svg>';
+    }
+
+    /* ---------- Ачивки ---------- */
+    function renderAchievements() {
+      content.innerHTML = skeleton(3);
+      api('achievements').then(function (d) {
+        if (d.error || !d.badges) {
+          content.innerHTML = '<div class="card bindhint">Привяжите команду в боте (<code>/start Название</code>), чтобы видеть ачивки.</div>';
+          return;
+        }
+        if (!d.badges.length) { content.innerHTML = empty('Пока нет ачивок.<br>Всё впереди! 🚀'); return; }
+        content.innerHTML = '<div class="card"><h4>' + esc(d.name) + '</h4><div class="badges">' +
+          d.badges.map(function (b) { return '<div class="badge">🏅 ' + esc(b.title) + '</div>'; }).join('') +
+          '</div></div>';
+        stagger(content);
+      }).catch(function () { content.innerHTML = empty('Не удалось загрузить ачивки.'); });
+    }
+
+    /* ---------- Навигация ---------- */
+    var renderers = { scoreboard: renderScoreboard, season: renderSeason, profile: renderProfile, achievements: renderAchievements };
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab); });
+      if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+      renderers[tab]();
+      if (tab === 'scoreboard') {
+        refreshTimer = setInterval(function () {
+          if (!document.hidden) renderScoreboard(true); // тихое обновление без мигания скелетонами
+        }, 20000);
+      }
+    }
+
+    document.querySelectorAll('.tab').forEach(function (b) {
+      b.addEventListener('click', function () { buzz('light'); switchTab(b.dataset.tab); });
     });
-    return wrap;
-  }
 
-  /* -------- Табло (переключатель Синхрон | Матрица) -------- */
-  function renderScoreboard() {
-    setBusy();
-    content.innerHTML = '';
-    content.appendChild(segment(
-      FORMATS.map(function (f) { return { v: f, t: f }; }),
-      boardFormat,
-      function (v) { boardFormat = v; renderScoreboard(); }
-    ));
-    var list = document.createElement('div');
-    list.className = 'list';
-    list.innerHTML = '<div class="loader">Загрузка…</div>';
-    content.appendChild(list);
-
-    api('scoreboard', { format: boardFormat }).then(function (d) {
-      if (!d.rows || !d.rows.length) { list.innerHTML = empty('Пока нет результатов текущей игры (' + esc(boardFormat) + ').'); return; }
-      var mine = null;
-      if (myName) { d.rows.forEach(function (r) { if (r.name === myName) mine = r; }); }
-      var html = '';
-      if (mine) {
-        var gap = '';
-        if (mine.place > 1) {
-          var above = d.rows[mine.place - 2];
-          gap = 'До ' + (mine.place - 1) + '-го места: ' + (above.points - mine.points) + ' баллов';
-        } else { gap = 'Вы лидируете! 🎉'; }
-        html += '<div class="banner">«' + esc(mine.name) + '» — ' + mine.place + ' место (' + esc(boardFormat) + '). ' + esc(gap) + '</div>';
-      }
-      d.rows.forEach(function (r) {
-        html += '<div class="row' + (r.name === myName ? ' mine' : '') + '">' +
-          '<div class="place">' + medal(r.place) + '</div>' +
-          '<div class="name">' + esc(r.name) + '</div>' +
-          '<div class="pts">' + r.points + '</div></div>';
-      });
-      list.innerHTML = html;
-    }).catch(function () { list.innerHTML = empty('Не удалось загрузить табло.'); });
-  }
-
-  /* -------- Сезон (Все | Синхрон | Матрица) -------- */
-  function renderSeason() {
-    setBusy();
-    content.innerHTML = '';
-    content.appendChild(segment(
-      [{ v: 'all', t: 'Все' }].concat(FORMATS.map(function (f) { return { v: f, t: f }; })),
-      seasonFormat,
-      function (v) { seasonFormat = v; renderSeason(); }
-    ));
-    var list = document.createElement('div');
-    list.className = 'list';
-    list.innerHTML = '<div class="loader">Загрузка…</div>';
-    content.appendChild(list);
-
-    var params = seasonFormat === 'all' ? {} : { format: seasonFormat };
-    api('season', params).then(function (d) {
-      seasonEl.textContent = d.season ? 'Сезон: ' + d.season : '';
-      if (!d.rows || !d.rows.length) { list.innerHTML = empty('Нет данных за сезон.'); return; }
-      var html = '';
-      d.rows.forEach(function (r) {
-        html += '<div class="row' + (r.name === myName ? ' mine' : '') + '">' +
-          '<div class="place">' + medal(r.rank) + '</div>' +
-          '<div class="name">' + esc(r.name) + '<div class="sub">' + r.games + ' игр</div></div>' +
-          '<div class="pts">' + r.points + '</div></div>';
-      });
-      list.innerHTML = html;
-    }).catch(function () { list.innerHTML = empty('Не удалось загрузить рейтинг.'); });
-  }
-
-  /* -------- Профиль (метрики: Все | Синхрон | Матрица) -------- */
-  var profileData = null; // кэш ответа, чтобы переключать формат без повторного запроса
-
-  function renderProfile() {
-    setBusy();
-    api('profile').then(function (d) {
-      if (d.error || !d.name) {
-        content.innerHTML = '<div class="bindhint">Чтобы увидеть профиль своей команды, привяжите чат к команде в боте:<br><br>' +
-          'отправьте боту <code>/start Название команды</code>.<br><br>' +
-          'Например: <code>/start Вжух</code>.</div>';
-        return;
-      }
-      myName = d.name;
-      profileData = d;
-      drawProfile();
-    }).catch(function () { content.innerHTML = empty('Не удалось загрузить профиль.'); });
-  }
-
-  function drawProfile() {
-    var d = profileData;
-    // выбор среза статистики по формату
-    var s = (profileFormat === 'all') ? (d.stats || {})
-      : ((d.statsByFormat && d.statsByFormat[profileFormat]) || {});
-
-    content.innerHTML = '';
-    var head = document.createElement('h3');
-    head.style.margin = '6px 4px 10px';
-    head.textContent = d.name;
-    content.appendChild(head);
-
-    content.appendChild(segment(
-      [{ v: 'all', t: 'Все' }].concat(FORMATS.map(function (f) { return { v: f, t: f }; })),
-      profileFormat,
-      function (v) { profileFormat = v; drawProfile(); }
-    ));
-
-    var body = document.createElement('div');
-    var html = '<div class="metrics">' +
-      metric(s.seasonPlace || '—', 'Место в сезоне') +
-      metric(s.wins || 0, 'Побед') +
-      metric(s.best || '—', 'Лучшее место') +
-      metric(s.avg || 0, 'Средний балл') +
-      metric(s.games || 0, 'Игр сыграно') +
-      metric(s.points || 0, 'Очки сезона') +
-      '</div>';
-
-    // спарклайн динамики (история фильтруется по формату на клиенте)
-    var hist = (d.history || []).filter(function (h) { return profileFormat === 'all' || h.format === profileFormat; });
-    if (hist.length) {
-      var max = Math.max.apply(null, hist.map(function (h) { return h.points; })) || 1;
-      html += '<div class="sub" style="margin:0 4px">Динамика очков по турам</div><div class="spark">';
-      hist.forEach(function (h) { html += '<i style="height:' + Math.round(h.points / max * 100) + '%" title="' + esc(h.format) + ', тур ' + h.gameNo + ': ' + h.points + '"></i>'; });
-      html += '</div>';
-    }
-
-    // бейджи (общие, без разбивки по формату)
-    if (d.badges && d.badges.length) {
-      html += '<div class="sub" style="margin:0 4px 6px">Ачивки</div><div class="badges">';
-      d.badges.forEach(function (b) { html += '<div class="badge">' + esc(b.title) + '</div>'; });
-      html += '</div>';
-    }
-    body.innerHTML = html;
-    content.appendChild(body);
-  }
-
-  function metric(v, k) { return '<div class="metric"><div class="v">' + esc(v) + '</div><div class="k">' + esc(k) + '</div></div>'; }
-
-  /* -------- Ачивки -------- */
-  function renderAchievements() {
-    setBusy();
-    api('achievements').then(function (d) {
-      if (d.error || !d.badges) { content.innerHTML = empty('Привяжите команду в боте (/start Название), чтобы видеть ачивки.'); return; }
-      if (!d.badges.length) { content.innerHTML = empty('Пока нет ачивок. Всё впереди!'); return; }
-      var html = '<div class="badges">';
-      d.badges.forEach(function (b) { html += '<div class="badge">' + esc(b.title) + '</div>'; });
-      content.innerHTML = html + '</div>';
-    }).catch(function () { content.innerHTML = empty('Не удалось загрузить ачивки.'); });
-  }
-
-  /* -------- Навигация -------- */
-  var renderers = { scoreboard: renderScoreboard, season: renderSeason, profile: renderProfile, achievements: renderAchievements };
-
-  function switchTab(tab) {
-    document.querySelectorAll('.tab').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab); });
-    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
-    renderers[tab]();
-    if (tab === 'scoreboard') refreshTimer = setInterval(renderScoreboard, 20000); // автообновление табло текущего формата
-  }
-
-  document.querySelectorAll('.tab').forEach(function (b) {
-    b.addEventListener('click', function () { switchTab(b.dataset.tab); });
-  });
-
-  // Стартовый прогрев: узнаём свою команду (для подсветки на табло), затем показываем табло.
-  var boot = (initData || urlTeam)
-    ? api('profile').then(function (d) { if (d && d.name) myName = d.name; }).catch(function () {})
-    : Promise.resolve();
-  boot.then(function () { switchTab('scoreboard'); });
-})();
-</script>
+    // Стартовый прогрев: узнаём свою команду для подсветки, затем показываем табло
+    var boot = (initData || urlTeam)
+      ? api('profile').then(function (d) { if (d && d.name) myName = d.name; }).catch(function () {})
+      : Promise.resolve();
+    boot.then(function () { switchTab('scoreboard'); });
+  })();
+  </script>
 </body>
 </html>
