@@ -53,7 +53,9 @@
     .topbar {
       position: sticky; top: 0; z-index: 20;
       display: flex; align-items: baseline; justify-content: space-between;
-      padding: 14px 16px 10px;
+      /* в полноэкранном режиме Telegram сверху системная строка и кнопки клиента —
+         отступаем на их высоту (переменные даёт Telegram, вне его равны нулю) */
+      padding: calc(14px + var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px)) 16px 10px;
       background: var(--bg-elev);
       -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
       border-bottom: 1px solid var(--line);
@@ -170,6 +172,14 @@
       color: var(--gold); border-radius: 20px; padding: 8px 14px;
       font-weight: 700; font-size: 13px; animation: fadeUp .35s ease both;
     }
+    .sharebar { display: flex; gap: 8px; margin: 0 0 12px; }
+    .sharebtn {
+      flex: 1; border: 1px solid var(--accent-border); background: var(--accent-soft);
+      color: var(--accent); font-weight: 700; font-size: 13px; cursor: pointer;
+      border-radius: 12px; padding: 10px 8px; transition: transform .12s ease;
+    }
+    .sharebtn:active { transform: scale(.97); }
+    .sharebtn.story { border-color: rgba(245, 197, 66, .45); background: var(--gold-soft); color: var(--gold); }
     .bindhint { line-height: 1.6; color: var(--muted); font-size: 14px; }
     .bindhint code { background: var(--accent-soft); color: var(--accent); padding: 2px 7px; border-radius: 6px; font-size: 13px; }
 
@@ -228,6 +238,7 @@
        https://script.google.com/macros/s/…/exec) вместо текста-заглушки. -->
   <script>
     window.API_BASE = 'https://script.google.com/macros/s/AKfycbwszeeKDoDhoZCcDl6K3r8-2PRWosbdFP7tQsGTYna7Vd_-dzw1fo-GSM1SEAnpH7al/exec';
+    window.BOT_LINK = 'https://t.me/MGamesinfo_Bot'; // ссылка на бота — для кнопок «Поделиться»
   </script>
 
   <script>
@@ -235,6 +246,12 @@
     var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
     var initData = tg ? tg.initData : '';
     if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
+
+    // Полноэкранный режим (Bot API 8.0+) — только на телефонах, на десктопе неуместен
+    if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast('8.0') &&
+        (tg.platform === 'ios' || tg.platform === 'android')) {
+      try { tg.requestFullscreen(); } catch (e) {}
+    }
 
     /* ---------- Тема: тёмный премиум + светлая версия по теме Telegram ---------- */
     function applyTheme() {
@@ -278,6 +295,32 @@
         });
       }
       return fetch(url).then(function (r) { return r.json(); });
+    }
+
+    /* ---------- Кэш «показать сразу, обновить тихо» ----------
+       Каждый ответ API запоминается (и переживает перезапуск через sessionStorage).
+       При открытии вкладки данные из кэша рисуются МГНОВЕННО, параллельно уходит
+       запрос за свежими; перерисовка — только если данные реально изменились. */
+    var apiCache = {};
+    try { apiCache = JSON.parse(sessionStorage.getItem('igr_cache') || '{}'); } catch (e) {}
+    function swr(action, params, onData, onError) {
+      var key = action + '|' + JSON.stringify(params || {});
+      var hit = apiCache[key];
+      if (hit) { try { onData(hit, true); } catch (e) {} }
+      api(action, params).then(function (d) {
+        var same = hit && JSON.stringify(hit) === JSON.stringify(d);
+        apiCache[key] = d;
+        try { sessionStorage.setItem('igr_cache', JSON.stringify(apiCache)); } catch (e) {}
+        if (!same) onData(d, false);
+      }).catch(function (err) {
+        if (!hit && onError) onError(err);
+      });
+    }
+    // Прогрев: после старта тихо тянем данные остальных вкладок — переключение мгновенно
+    function prefetch() {
+      swr('scoreboard', { format: FORMATS[1] }, function () {});
+      swr('season', {}, function () {});
+      if (initData || urlTeam) swr('achievements', {}, function () {});
     }
 
     function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
@@ -351,7 +394,7 @@
         list.innerHTML = skeleton(6);
         content.appendChild(list);
       }
-      api('scoreboard', { format: boardFormat }).then(function (d) {
+      swr('scoreboard', { format: boardFormat }, function (d) {
         var list = document.getElementById('boardlist');
         if (!list) return;
         if (!d.rows || !d.rows.length) {
@@ -407,7 +450,7 @@
             if (!sessionStorage.getItem(key)) { sessionStorage.setItem(key, '1'); confetti(); }
           } catch (e) {}
         }
-      }).catch(function () {
+      }, function () {
         var list = document.getElementById('boardlist');
         if (list) list.innerHTML = empty('Не удалось загрузить табло.<br>Проверьте связь и попробуйте ещё раз.');
       });
@@ -426,7 +469,7 @@
       content.appendChild(list);
 
       var params = seasonFormat === 'all' ? {} : { format: seasonFormat };
-      api('season', params).then(function (d) {
+      swr('season', params, function (d) {
         seasonEl.textContent = d.season ? d.season : '';
         if (!d.rows || !d.rows.length) { list.innerHTML = empty('Нет данных за сезон.'); return; }
         var html = '';
@@ -439,7 +482,7 @@
         });
         list.innerHTML = html;
         stagger(list);
-      }).catch(function () { list.innerHTML = empty('Не удалось загрузить рейтинг.'); });
+      }, function () { list.innerHTML = empty('Не удалось загрузить рейтинг.'); });
     }
 
     /* ---------- Профиль ---------- */
@@ -447,7 +490,7 @@
 
     function renderProfile() {
       content.innerHTML = skeleton(5);
-      api('profile').then(function (d) {
+      swr('profile', {}, function (d) {
         if (d.error || !d.name) {
           content.innerHTML = '<div class="card bindhint">Чтобы видеть профиль своей команды, привяжите её в боте:<br><br>' +
             'отправьте боту <code>/start Название команды</code><br><br>' +
@@ -457,7 +500,7 @@
         myName = d.name;
         profileData = d;
         drawProfile();
-      }).catch(function () { content.innerHTML = empty('Не удалось загрузить профиль.'); });
+      }, function () { content.innerHTML = empty('Не удалось загрузить профиль.'); });
     }
 
     function drawProfile() {
@@ -472,6 +515,37 @@
         '<div><div class="nm">' + esc(d.name) + '</div>' +
         '<div class="sb">' + (s.games || 0) + ' игр · средний балл ' + (s.avg || 0) + '</div></div>';
       content.appendChild(head);
+
+      // Кнопки «Поделиться»: в любой чат и (если клиент умеет) в сторис
+      var shareText = '🧠 «' + d.name + '» в квиз-лиге «Игры разума»' +
+        (s.seasonPlace ? ': ' + s.seasonPlace + '-е место в сезоне' : '') +
+        ', очков: ' + (s.points || 0) + ', побед: ' + (s.wins || 0) + '. Сможешь круче? 😏';
+      var share = document.createElement('div');
+      share.className = 'sharebar';
+      var btnChat = document.createElement('button');
+      btnChat.className = 'sharebtn';
+      btnChat.textContent = '📣 Поделиться';
+      btnChat.addEventListener('click', function () {
+        buzz('medium');
+        var link = 'https://t.me/share/url?url=' + encodeURIComponent(window.BOT_LINK) +
+          '&text=' + encodeURIComponent(shareText);
+        if (tg && tg.openTelegramLink) tg.openTelegramLink(link);
+        else window.open(link, '_blank');
+      });
+      share.appendChild(btnChat);
+      if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast('7.8') && tg.shareToStory) {
+        var btnStory = document.createElement('button');
+        btnStory.className = 'sharebtn story';
+        btnStory.textContent = '📸 В сторис';
+        btnStory.addEventListener('click', function () {
+          buzz('medium');
+          try {
+            tg.shareToStory(new URL('story-bg.jpg', location.href).href, { text: shareText });
+          } catch (e) {}
+        });
+        share.appendChild(btnStory);
+      }
+      content.appendChild(share);
 
       content.appendChild(segment(
         [{ v: 'all', t: 'Все' }].concat(FORMATS.map(function (f) { return { v: f, t: f }; })),
@@ -531,7 +605,7 @@
     /* ---------- Ачивки ---------- */
     function renderAchievements() {
       content.innerHTML = skeleton(3);
-      api('achievements').then(function (d) {
+      swr('achievements', {}, function (d) {
         if (d.error || !d.badges) {
           content.innerHTML = '<div class="card bindhint">Привяжите команду в боте (<code>/start Название</code>), чтобы видеть ачивки.</div>';
           return;
@@ -541,7 +615,7 @@
           d.badges.map(function (b) { return '<div class="badge">🏅 ' + esc(b.title) + '</div>'; }).join('') +
           '</div></div>';
         stagger(content);
-      }).catch(function () { content.innerHTML = empty('Не удалось загрузить ачивки.'); });
+      }, function () { content.innerHTML = empty('Не удалось загрузить ачивки.'); });
     }
 
     /* ---------- Навигация ---------- */
@@ -562,11 +636,19 @@
       b.addEventListener('click', function () { buzz('light'); switchTab(b.dataset.tab); });
     });
 
-    // Стартовый прогрев: узнаём свою команду для подсветки, затем показываем табло
-    var boot = (initData || urlTeam)
-      ? api('profile').then(function (d) { if (d && d.name) myName = d.name; }).catch(function () {})
+    // Старт: если профиль уже в кэше — команда известна мгновенно, табло сразу;
+    // свежий профиль подтянется фоном. Затем тихо прогреваем остальные вкладки.
+    var cachedProfile = apiCache['profile|{}'];
+    if (cachedProfile && cachedProfile.name) myName = cachedProfile.name;
+    var boot = (initData || urlTeam) && !myName
+      ? api('profile').then(function (d) {
+          if (d && d.name) { myName = d.name; apiCache['profile|{}'] = d; }
+        }).catch(function () {})
       : Promise.resolve();
-    boot.then(function () { switchTab('scoreboard'); });
+    boot.then(function () {
+      switchTab('scoreboard');
+      setTimeout(prefetch, 1500); // прогрев после отрисовки главного экрана
+    });
   })();
   </script>
 </body>
