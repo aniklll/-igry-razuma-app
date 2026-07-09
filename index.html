@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <title>Игры разума</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- Ранний TLS-хендшейк с серверами API: первый запрос уходит быстрее.
+       (script.google.com отвечает редиректом на script.googleusercontent.com —
+       прогреваем оба.) -->
+  <link rel="preconnect" href="https://script.google.com">
+  <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
   <style>
     /* ============ Палитра: премиум A+C, индиго-акцент ============ */
     :root {
@@ -204,9 +209,44 @@
     .tab.active { color: var(--accent); background: var(--accent-soft); }
 
     #confetti { position: fixed; inset: 0; pointer-events: none; z-index: 100; }
+    /* ============ Заставка первичной загрузки ============ */
+    #splash {
+      position: fixed; inset: 0; z-index: 60;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+      background: var(--bg);
+      transition: opacity .45s ease;
+    }
+    #splash.hide { opacity: 0; pointer-events: none; }
+    .splash-mark {
+      width: 92px; height: 92px; border-radius: 28px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 36px; font-weight: 800; color: #fff; letter-spacing: 1px;
+      background: linear-gradient(135deg, #8d7dff, #5a49e0);
+      box-shadow: 0 12px 40px rgba(124, 108, 255, 0.35);
+      animation: splashPulse 1.6s ease-in-out infinite;
+    }
+    @keyframes splashPulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 12px 40px rgba(124, 108, 255, 0.3); }
+      50% { transform: scale(1.07); box-shadow: 0 18px 56px rgba(124, 108, 255, 0.55); }
+    }
+    .splash-title { font-size: 20px; font-weight: 700; letter-spacing: 0.3px; }
+    .splash-dots { display: flex; gap: 7px; }
+    .splash-dots i {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--accent); opacity: 0.35;
+      animation: splashDot 1.1s ease-in-out infinite;
+    }
+    .splash-dots i:nth-child(2) { animation-delay: 0.18s; }
+    .splash-dots i:nth-child(3) { animation-delay: 0.36s; }
+    @keyframes splashDot { 40% { opacity: 1; transform: translateY(-4px); } }
   </style>
 </head>
 <body>
+  <!-- Заставка: видна мгновенно при открытии, исчезает после первой отрисовки табло -->
+  <div id="splash">
+    <div class="splash-mark">ИР</div>
+    <div class="splash-title">Игры разума</div>
+    <div class="splash-dots"><i></i><i></i><i></i></div>
+  </div>
   <header class="topbar">
     <div class="title">🧠 Игры разума<span class="dot">.</span></div>
     <div id="season" class="season"></div>
@@ -278,6 +318,17 @@
     var content = document.getElementById('content');
     var seasonEl = document.getElementById('season');
     var refreshTimer = null;
+
+    /* ---------- Заставка: скрываем после первой отрисовки данных ---------- */
+    var splash = document.getElementById('splash');
+    var splashDone = false;
+    function hideSplash() {
+      if (splashDone || !splash) return;
+      splashDone = true;
+      splash.classList.add('hide');
+      setTimeout(function () { try { splash.remove(); } catch (e) {} }, 500);
+    }
+    setTimeout(hideSplash, 8000); // страховка: не держим заставку дольше 8 секунд
 
     var FORMATS = ['Синхрон', 'Матрица'];
     var boardFormat = FORMATS[0];
@@ -396,6 +447,7 @@
         content.appendChild(list);
       }
       swr('scoreboard', { format: boardFormat }, function (d) {
+        hideSplash();
         var list = document.getElementById('boardlist');
         if (!list) return;
         if (!d.rows || !d.rows.length) {
@@ -457,6 +509,7 @@
           } catch (e) {}
         }
       }, function () {
+        hideSplash();
         var list = document.getElementById('boardlist');
         if (list) list.innerHTML = empty('Не удалось загрузить табло.<br>Проверьте связь и попробуйте ещё раз.');
       });
@@ -642,19 +695,24 @@
       b.addEventListener('click', function () { buzz('light'); switchTab(b.dataset.tab); });
     });
 
-    // Старт: если профиль уже в кэше — команда известна мгновенно, табло сразу;
-    // свежий профиль подтянется фоном. Затем тихо прогреваем остальные вкладки.
+    // Старт БЕЗ ожиданий: табло рисуется СРАЗУ (кэш или скелетоны), а профиль
+    // (чья команда — подсветка «ВЫ») грузится ПАРАЛЛЕЛЬНО первому экрану.
+    // Раньше профиль ждали до отрисовки — на холодном старте Apps Script это
+    // удваивало время первой загрузки (два последовательных запроса).
     var cachedProfile = apiCache['profile|{}'];
     if (cachedProfile && cachedProfile.name) myName = cachedProfile.name;
-    var boot = (initData || urlTeam) && !myName
-      ? api('profile').then(function (d) {
-          if (d && d.name) { myName = d.name; apiCache['profile|{}'] = d; }
-        }).catch(function () {})
-      : Promise.resolve();
-    boot.then(function () {
-      switchTab('scoreboard');
-      setTimeout(prefetch, 1500); // прогрев после отрисовки главного экрана
-    });
+    switchTab('scoreboard');
+    if ((initData || urlTeam) && !myName) {
+      api('profile').then(function (d) {
+        if (d && d.name) {
+          myName = d.name;
+          apiCache['profile|{}'] = d;
+          try { sessionStorage.setItem('igr_cache', JSON.stringify(apiCache)); } catch (e) {}
+          renderScoreboard(true); // тихо перерисовать: подсветить свою команду
+        }
+      }).catch(function () {});
+    }
+    setTimeout(prefetch, 1500); // прогрев остальных вкладок после главного экрана
   })();
   </script>
 </body>
