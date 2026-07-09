@@ -80,13 +80,14 @@
     /* ============ Подиум топ-3 ============ */
     .podium { display: flex; align-items: flex-end; gap: 8px; margin: 6px 2px 14px; }
     .pod { flex: 1; text-align: center; animation: rise .45s ease both; }
+    .pod .avarow { display: flex; justify-content: center; margin-bottom: 6px; }
     .pod .ava {
-      width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 6px;
+      width: 44px; height: 44px; border-radius: 50%; margin: 0 -6px;
       display: flex; align-items: center; justify-content: center;
       font-weight: 700; font-size: 16px; color: var(--muted);
       background: var(--card-2); border: 2px solid var(--line);
     }
-    .pod .nm { font-size: 11px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
+    .pod .nm { font-size: 11px; font-weight: 600; padding: 0 2px; line-height: 1.3; overflow: hidden; }
     .pod .pts { font-size: 11px; color: var(--muted); margin-top: 1px; }
     .pod .base {
       margin-top: 6px; border-radius: 10px 10px 0 0; background: var(--card);
@@ -405,19 +406,24 @@
         d.rows.forEach(function (r) { if (myName && r.name === myName) mine = r; });
 
         var html = '';
-        // Подиум: первые три строки списка
-        var podium = d.rows.slice(0, 3);
-        if (podium.length >= 2) {
-          var order = podium.length === 3 ? [1, 0, 2] : [0, 1]; // 2-е слева, 1-е в центре, 3-е справа
+        // Подиум: группируем команды ПО МЕСТАМ 1–3. При дележе места все команды
+        // встают на одну тумбу (аватарки веером, имена списком) — три тумбы видны всегда.
+        var groups = { 1: [], 2: [], 3: [] };
+        d.rows.forEach(function (r) { if (r.place <= 3) groups[r.place].push(r); });
+        if (groups[1].length && d.rows.length > 1) {
           html += '<div class="podium">';
-          order.forEach(function (idx, k) {
-            var r = podium[idx];
-            if (!r) return;
-            html += '<div class="pod p' + Math.min(r.place, 3) + (r.name === myName ? ' mine' : '') + '" style="animation-delay:' + (k * 90) + 'ms">' +
-              '<div class="ava">' + initials(r.name) + '</div>' +
-              '<div class="nm">' + esc(r.name) + '</div>' +
-              '<div class="pts">' + r.points + '</div>' +
-              '<div class="base">' + r.place + '</div></div>';
+          [2, 1, 3].forEach(function (pl, k) { // 2-е слева, 1-е в центре, 3-е справа
+            var g = groups[pl];
+            if (!g.length) return;
+            var isMine = g.some(function (r) { return r.name === myName; });
+            var names = g.map(function (r) { return esc(r.name); });
+            var shownNames = names.slice(0, 2).join('<br>') + (names.length > 2 ? '<br>+ещё ' + (names.length - 2) : '');
+            var avas = g.slice(0, 3).map(function (r) { return '<div class="ava">' + initials(r.name) + '</div>'; }).join('');
+            html += '<div class="pod p' + pl + (isMine ? ' mine' : '') + '" style="animation-delay:' + (k * 90) + 'ms">' +
+              '<div class="avarow">' + avas + '</div>' +
+              '<div class="nm">' + shownNames + '</div>' +
+              '<div class="pts">' + g[0].points + '</div>' +
+              '<div class="base">' + pl + '</div></div>';
           });
           html += '</div>';
         }
