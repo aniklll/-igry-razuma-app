@@ -212,24 +212,27 @@
     /* ============ Заставка первичной загрузки ============ */
     #splash {
       position: fixed; inset: 0; z-index: 60;
-      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
       background: var(--bg);
       transition: opacity .45s ease;
     }
     #splash.hide { opacity: 0; pointer-events: none; }
-    .splash-mark {
-      width: 92px; height: 92px; border-radius: 28px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 36px; font-weight: 800; color: #fff; letter-spacing: 1px;
-      background: linear-gradient(135deg, #8d7dff, #5a49e0);
-      box-shadow: 0 12px 40px rgba(124, 108, 255, 0.35);
-      animation: splashPulse 1.6s ease-in-out infinite;
+    /* Логотип виден мгновенно (37KB), поверх него — неоновая видео-анимация,
+       как только докачается (200KB); если видео не заведётся — остаётся логотип */
+    .splash-logo {
+      width: min(64vw, 280px); height: min(64vw, 280px);
+      border-radius: 32px; overflow: hidden; position: relative;
+      background: #0a1128;
+      box-shadow: 0 18px 64px rgba(86, 120, 255, 0.30);
+      animation: splashPulse 2.2s ease-in-out infinite;
+    }
+    .splash-logo img, .splash-logo video {
+      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
     }
     @keyframes splashPulse {
-      0%, 100% { transform: scale(1); box-shadow: 0 12px 40px rgba(124, 108, 255, 0.3); }
-      50% { transform: scale(1.07); box-shadow: 0 18px 56px rgba(124, 108, 255, 0.55); }
+      0%, 100% { transform: scale(1); box-shadow: 0 18px 64px rgba(86, 120, 255, 0.26); }
+      50% { transform: scale(1.03); box-shadow: 0 22px 80px rgba(86, 120, 255, 0.45); }
     }
-    .splash-title { font-size: 20px; font-weight: 700; letter-spacing: 0.3px; }
     .splash-dots { display: flex; gap: 7px; }
     .splash-dots i {
       width: 8px; height: 8px; border-radius: 50%; background: var(--accent); opacity: 0.35;
@@ -238,13 +241,43 @@
     .splash-dots i:nth-child(2) { animation-delay: 0.18s; }
     .splash-dots i:nth-child(3) { animation-delay: 0.36s; }
     @keyframes splashDot { 40% { opacity: 1; transform: translateY(-4px); } }
+
+    /* ============ Селекторы (сезон, команда) и админ ============ */
+    .pickrow { display: flex; gap: 8px; margin-bottom: 10px; animation: fadeUp .3s ease both; }
+    .pickrow label {
+      flex: 0 0 auto; align-self: center; color: var(--muted);
+      font-size: 12px; font-weight: 600;
+    }
+    select.picker {
+      flex: 1; min-width: 0; appearance: none; -webkit-appearance: none;
+      background: var(--card) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="8" viewBox="0 0 12 8"><path d="M1 1l5 5 5-5" fill="none" stroke="%238b90a5" stroke-width="2" stroke-linecap="round"/></svg>') no-repeat right 12px center;
+      color: var(--text); border: 1px solid var(--line); border-radius: 12px;
+      padding: 10px 34px 10px 12px; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    .adminchip {
+      font-size: 10px; font-weight: 800; letter-spacing: .4px;
+      color: var(--gold); background: var(--gold-soft);
+      border: 1px solid rgba(245, 197, 66, .45);
+      border-radius: 8px; padding: 2px 7px; margin-left: 7px; vertical-align: 2px;
+    }
+
+    /* ============ Браузер/десктоп: та же страница, шире и просторнее ============ */
+    @media (min-width: 700px) {
+      main { max-width: 680px; padding: 16px 20px 32px; }
+      .topbar { padding-left: 24px; padding-right: 24px; }
+      .tabbar { justify-content: center; gap: 18px; }
+      .pod .ava { width: 52px; height: 52px; }
+    }
   </style>
 </head>
 <body>
-  <!-- Заставка: видна мгновенно при открытии, исчезает после первой отрисовки табло -->
+  <!-- Заставка: логотип виден мгновенно при открытии, поверх запускается
+       видео-анимация; всё исчезает после первой отрисовки табло -->
   <div id="splash">
-    <div class="splash-mark">ИР</div>
-    <div class="splash-title">Игры разума</div>
+    <div class="splash-logo">
+      <img src="logo.jpg" alt="Игры разума">
+      <video src="loading.mp4" muted autoplay loop playsinline></video>
+    </div>
     <div class="splash-dots"><i></i><i></i><i></i></div>
   </div>
   <header class="topbar">
@@ -334,13 +367,30 @@
     var boardFormat = FORMATS[0];
     var seasonFormat = 'all';
     var profileFormat = 'all';
-    var urlTeam = new URLSearchParams(location.search).get('team') || '';
+    var seasonSel = '';   // выбранный сезон ('' = текущий)
     var myName = null;
+    var meta = null;      // ответ action=meta: сезоны, админ, своя команда
+    var teamsList = null; // список команд (для выбора в браузере/админом)
+
+    // Вне Telegram (обычный браузер) приложение работает автономно:
+    // выбранная команда и кэш живут в localStorage (переживают закрытие вкладки).
+    var store = initData ? sessionStorage : localStorage;
+
+    // Команда, чей профиль смотрим: ?team= из ссылки, выбор в браузере
+    // или выбор админа. В Telegram у привязанного игрока пусто — команда
+    // определяется на сервере по подписи initData.
+    var viewTeam = new URLSearchParams(location.search).get('team') || '';
+    if (!initData && !viewTeam) { try { viewTeam = store.getItem('igr_team') || ''; } catch (e) {} }
+
+    function teamParams(extra) {
+      var p = extra || {};
+      if (viewTeam && !p.team) p.team = viewTeam;
+      return p;
+    }
 
     function api(action, params) {
       var url = window.API_BASE + '?action=' + encodeURIComponent(action);
       if (initData) url += '&initData=' + encodeURIComponent(initData);
-      if (!initData && urlTeam) url += '&team=' + encodeURIComponent(urlTeam);
       if (params) {
         Object.keys(params).forEach(function (k) {
           if (params[k] != null && params[k] !== '') url += '&' + k + '=' + encodeURIComponent(params[k]);
@@ -354,7 +404,7 @@
        При открытии вкладки данные из кэша рисуются МГНОВЕННО, параллельно уходит
        запрос за свежими; перерисовка — только если данные реально изменились. */
     var apiCache = {};
-    try { apiCache = JSON.parse(sessionStorage.getItem('igr_cache') || '{}'); } catch (e) {}
+    try { apiCache = JSON.parse(store.getItem('igr_cache') || '{}'); } catch (e) {}
     function swr(action, params, onData, onError) {
       var key = action + '|' + JSON.stringify(params || {});
       var hit = apiCache[key];
@@ -362,7 +412,7 @@
       api(action, params).then(function (d) {
         var same = hit && JSON.stringify(hit) === JSON.stringify(d);
         apiCache[key] = d;
-        try { sessionStorage.setItem('igr_cache', JSON.stringify(apiCache)); } catch (e) {}
+        try { store.setItem('igr_cache', JSON.stringify(apiCache)); } catch (e) {}
         if (!same) onData(d, false);
       }).catch(function (err) {
         if (!hit && onError) onError(err);
@@ -372,7 +422,15 @@
     function prefetch() {
       swr('scoreboard', { format: FORMATS[1] }, function () {});
       swr('season', {}, function () {});
-      if (initData || urlTeam) swr('achievements', {}, function () {});
+      if (initData || viewTeam) swr('achievements', teamParams(), function () {});
+      if (!initData || (meta && meta.admin)) loadTeams(function () {});
+    }
+    // Список команд — для выбора команды в браузере и админом
+    function loadTeams(cb) {
+      if (teamsList) { cb(teamsList); return; }
+      swr('teams', {}, function (d) {
+        if (d && d.teams) { teamsList = d.teams; cb(teamsList); }
+      }, function () { cb(null); });
     }
 
     function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
@@ -505,7 +563,7 @@
         if (mine && mine.place === 1) {
           var key = 'confetti_' + boardFormat;
           try {
-            if (!sessionStorage.getItem(key)) { sessionStorage.setItem(key, '1'); confetti(); }
+            if (!store.getItem(key)) { store.setItem(key, '1'); confetti(); }
           } catch (e) {}
         }
       }, function () {
@@ -518,6 +576,31 @@
     /* ---------- Сезон ---------- */
     function renderSeason() {
       content.innerHTML = '';
+
+      // Селектор сезона: появляется, когда в архиве есть прошлые сезоны —
+      // игроки могут посмотреть любой прошедший сезон
+      var seasons = meta && meta.seasons ? meta.seasons : [];
+      if (seasons.length > 1) {
+        var wrap = document.createElement('div');
+        wrap.className = 'pickrow';
+        var sel = document.createElement('select');
+        sel.className = 'picker';
+        seasons.forEach(function (s) {
+          var o = document.createElement('option');
+          o.value = s;
+          o.textContent = (s === meta.currentSeason) ? s + ' · текущий' : s;
+          if ((seasonSel || meta.currentSeason) === s) o.selected = true;
+          sel.appendChild(o);
+        });
+        sel.addEventListener('change', function () {
+          buzz('light');
+          seasonSel = (sel.value === meta.currentSeason) ? '' : sel.value;
+          renderSeason();
+        });
+        wrap.appendChild(sel);
+        content.appendChild(wrap);
+      }
+
       content.appendChild(segment(
         [{ v: 'all', t: 'Все' }].concat(FORMATS.map(function (f) { return { v: f, t: f }; })),
         seasonFormat,
@@ -528,6 +611,7 @@
       content.appendChild(list);
 
       var params = seasonFormat === 'all' ? {} : { format: seasonFormat };
+      if (seasonSel) params.season = seasonSel;
       swr('season', params, function (d) {
         seasonEl.textContent = d.season ? d.season : '';
         if (!d.rows || !d.rows.length) { list.innerHTML = empty('Нет данных за сезон.'); return; }
@@ -547,16 +631,62 @@
     /* ---------- Профиль ---------- */
     var profileData = null;
 
+    // Показывать ли выбор команды: в браузере (вне Telegram) — всегда,
+    // в Telegram — админу (он смотрит любую команду без привязки)
+    function canPickTeam() { return !initData || (meta && meta.admin); }
+
+    // Строка «Команда: [выпадающий список]» над профилем
+    function teamPickerRow(current) {
+      var wrap = document.createElement('div');
+      wrap.className = 'pickrow';
+      var sel = document.createElement('select');
+      sel.className = 'picker';
+      var ph = document.createElement('option');
+      ph.value = ''; ph.textContent = '— выберите команду —';
+      sel.appendChild(ph);
+      loadTeams(function (list) {
+        (list || []).forEach(function (t) {
+          var o = document.createElement('option');
+          o.value = t; o.textContent = t;
+          if (t === current) o.selected = true;
+          sel.appendChild(o);
+        });
+      });
+      sel.addEventListener('change', function () {
+        buzz('light');
+        viewTeam = sel.value;
+        if (!initData) { // в браузере запоминаем выбор как «свою» команду
+          try { store.setItem('igr_team', viewTeam); } catch (e) {}
+          myName = viewTeam || null;
+        }
+        renderProfile();
+        renderScoreboard(true);
+      });
+      wrap.appendChild(sel);
+      return wrap;
+    }
+
     function renderProfile() {
       content.innerHTML = skeleton(5);
-      swr('profile', {}, function (d) {
+      swr('profile', teamParams(), function (d) {
         if (d.error || !d.name) {
-          content.innerHTML = '<div class="card bindhint">Чтобы видеть профиль своей команды, привяжите её в боте:<br><br>' +
-            'отправьте боту <code>/start Название команды</code><br><br>' +
-            'Например: <code>/start Вжух</code></div>';
+          content.innerHTML = '';
+          if (canPickTeam()) {
+            content.appendChild(teamPickerRow(viewTeam));
+            var hint = document.createElement('div');
+            hint.className = 'card bindhint';
+            hint.innerHTML = meta && meta.admin && initData
+              ? '👑 Режим админа: выберите любую команду, чтобы посмотреть её профиль и ачивки.'
+              : 'Выберите свою команду из списка — приложение запомнит выбор и будет подсвечивать её на табло.';
+            content.appendChild(hint);
+          } else {
+            content.innerHTML = '<div class="card bindhint">Чтобы видеть профиль своей команды, ' +
+              'перейдите по <b>ссылке-приглашению</b>, которую организатор выдал вашему капитану ' +
+              '(капитан может переслать её всей команде).</div>';
+          }
           return;
         }
-        myName = d.name;
+        if (initData && !viewTeam) myName = d.name;
         profileData = d;
         drawProfile();
       }, function () { content.innerHTML = empty('Не удалось загрузить профиль.'); });
@@ -568,6 +698,7 @@
         : ((d.statsByFormat && d.statsByFormat[profileFormat]) || {});
 
       content.innerHTML = '';
+      if (canPickTeam()) content.appendChild(teamPickerRow(viewTeam || d.name));
       var head = document.createElement('div');
       head.className = 'phead';
       head.innerHTML = '<div class="ava">' + initials(d.name) + '</div>' +
@@ -575,7 +706,8 @@
         '<div class="sb">' + (s.games || 0) + ' игр · средний балл ' + (s.avg || 0) + '</div></div>';
       content.appendChild(head);
 
-      // Кнопки «Поделиться»: в любой чат и (если клиент умеет) в сторис
+      // Кнопки «Поделиться»: в любой чат и (если клиент умеет) в сторис;
+      // в браузере — системное меню «Поделиться» (если оно есть)
       var shareText = '🧠 «' + d.name + '» в квиз-лиге «Игры разума»' +
         (s.seasonPlace ? ': ' + s.seasonPlace + '-е место в сезоне' : '') +
         ', очков: ' + (s.points || 0) + ', побед: ' + (s.wins || 0) + '. Сможешь круче? 😏';
@@ -586,6 +718,10 @@
       btnChat.textContent = '📣 Поделиться';
       btnChat.addEventListener('click', function () {
         buzz('medium');
+        if (!tg && navigator.share) {
+          navigator.share({ text: shareText, url: window.BOT_LINK }).catch(function () {});
+          return;
+        }
         var link = 'https://t.me/share/url?url=' + encodeURIComponent(window.BOT_LINK) +
           '&text=' + encodeURIComponent(shareText);
         if (tg && tg.openTelegramLink) tg.openTelegramLink(link);
@@ -664,9 +800,11 @@
     /* ---------- Ачивки ---------- */
     function renderAchievements() {
       content.innerHTML = skeleton(3);
-      swr('achievements', {}, function (d) {
+      swr('achievements', teamParams(), function (d) {
         if (d.error || !d.badges) {
-          content.innerHTML = '<div class="card bindhint">Привяжите команду в боте (<code>/start Название</code>), чтобы видеть ачивки.</div>';
+          content.innerHTML = canPickTeam()
+            ? '<div class="card bindhint">Выберите команду во вкладке «Профиль» — здесь появятся её ачивки.</div>'
+            : '<div class="card bindhint">Перейдите по ссылке-приглашению от организатора — и здесь появятся ачивки вашей команды.</div>';
           return;
         }
         if (!d.badges.length) { content.innerHTML = empty('Пока нет ачивок.<br>Всё впереди! 🚀'); return; }
@@ -695,23 +833,31 @@
       b.addEventListener('click', function () { buzz('light'); switchTab(b.dataset.tab); });
     });
 
-    // Старт БЕЗ ожиданий: табло рисуется СРАЗУ (кэш или скелетоны), а профиль
-    // (чья команда — подсветка «ВЫ») грузится ПАРАЛЛЕЛЬНО первому экрану.
-    // Раньше профиль ждали до отрисовки — на холодном старте Apps Script это
-    // удваивало время первой загрузки (два последовательных запроса).
-    var cachedProfile = apiCache['profile|{}'];
-    if (cachedProfile && cachedProfile.name) myName = cachedProfile.name;
-    switchTab('scoreboard');
-    if ((initData || urlTeam) && !myName) {
-      api('profile').then(function (d) {
-        if (d && d.name) {
-          myName = d.name;
-          apiCache['profile|{}'] = d;
-          try { sessionStorage.setItem('igr_cache', JSON.stringify(apiCache)); } catch (e) {}
-          renderScoreboard(true); // тихо перерисовать: подсветить свою команду
-        }
-      }).catch(function () {});
+    /* ---------- Старт ---------- */
+    // Табло рисуется СРАЗУ (кэш или скелетоны), а «мета» (сезоны, своя команда,
+    // админ ли) грузится ПАРАЛЛЕЛЬНО первому экрану — никаких последовательных
+    // ожиданий на холодном старте Apps Script.
+    function markAdmin() {
+      var t = document.querySelector('.title');
+      if (t && !t.querySelector('.adminchip')) {
+        t.insertAdjacentHTML('beforeend', '<span class="adminchip">👑 админ</span>');
+      }
     }
+
+    if (!initData && viewTeam) myName = viewTeam; // браузер: выбранная ранее команда
+    switchTab('scoreboard');
+
+    swr('meta', teamParams(), function (d) {
+      if (!d || d.error) return;
+      meta = d;
+      if (d.admin) markAdmin();
+      if (d.currentSeason && !seasonEl.textContent) seasonEl.textContent = d.currentSeason;
+      var mine = (!initData && viewTeam) ? viewTeam : d.team;
+      if (mine && myName !== mine) {
+        myName = mine;
+        renderScoreboard(true); // тихо перерисовать: подсветить свою команду
+      }
+    });
     setTimeout(prefetch, 1500); // прогрев остальных вкладок после главного экрана
   })();
   </script>
